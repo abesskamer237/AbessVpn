@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_v2ray/flutter_v2ray.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -33,7 +34,7 @@ class _MainScreenState extends State<MainScreen> {
   String status = "DÉCONNECTÉ";
   bool isConnected = false;
   bool isLoading = false;
-  List<String> logs = ["[10:59] Bébé Tunnel démarré 👶", "[10:59] Prêt"];
+  List<String> logs = ["[10:59] Bébé Tunnel démarré 👶", "[10:59] Prêt - supporte VLESS/VMESS"];
 
   @override
   void initState() {
@@ -45,8 +46,6 @@ class _MainScreenState extends State<MainScreen> {
           status = s.state;
           isConnected = s.state == "CONNECTED";
           isLoading = s.state == "CONNECTING";
-        });
-        setState(() {
           logs.add("[${DateTime.now().toString().substring(11,19)}] $status");
         });
       },
@@ -63,13 +62,85 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
-  String fusionHost(String host, String link) {
-    if (host.isEmpty || link.isEmpty) return link;
-    String res = link.trim();
-    res = res.replaceAll(RegExp(r'&sni=[^&]+'), '').replaceAll(RegExp(r'\?sni=[^&]+&'), '?');
-    res = res.replaceAll(RegExp(r'[?&]+$'), '');
-    String sep = res.contains("?")? "&" : "?";
-    return "$res${sep}sni=${host.trim()}";
+  // PATCH UNIVERSEL - MARCHE POUR TOUS LES LIENS
+  String patchConfigForInjection(String originalJson, String injectedHost) {
+    try {
+      Map<String, dynamic> config = jsonDecode(originalJson);
+      final host = injectedHost.trim();
+      if (host.isEmpty) return originalJson;
+
+      if (config['outbounds']!= null && config['outbounds'].isNotEmpty) {
+        var outbound = config['outbounds'][0];
+        var stream = Map<String, dynamic>.from(outbound['streamSettings']?? {});
+
+        // 1. TLS SNI INJECTION
+        if (stream['security'] == 'tls' || stream['tlsSettings']!= null) {
+          var tls = Map<String, dynamic>.from(stream['tlsSettings']?? {});
+          tls['serverName'] = host;
+          tls['allowInsecure'] = true;
+          stream['tlsSettings'] = tls;
+          stream['security'] = 'tls';
+        }
+
+        // 2. WS HOST INJECTION
+        if (stream['network'] == 'ws' || stream['wsSettings']!= null) {
+          var ws = Map<String, dynamic>.from(stream['wsSettings']?? {});
+          ws['headers'] = ws['headers']?? {};
+          ws['headers']['Host'] = host;
+          stream['wsSettings'] = ws;
+        }
+
+        // 3. TCP HTTP HOST INJECTION
+        if (stream['network'] == 'tcp' || stream['tcpSettings']!= null) {
+          var tcp = Map<String, dynamic>.from(stream['tcpSettings']?? {});
+          tcp['header'] = tcp['header']?? {"type": "http"};
+          if (tcp['header']['type'] == 'http') {
+            tcp['header']['request'] = tcp['header']['request']?? {};
+            tcp['header']['request']['headers'] = tcp['header']['request']['headers']?? {};
+            tcp['header']['request']['headers']['Host'] = [host, "$host:443"];
+            tcp['header']['request']['headers']['User-Agent'] = ["Mozilla/5.0"];
+          }
+          stream['tcpSettings'] = tcp;
+        }
+
+        // 4. GRPC AUTHORITY
+        if (stream['network'] == 'grpc' || stream['grpcSettings']!= null) {
+          var grpc = Map<String, dynamic>.from(stream['grpcSettings']?? {});
+          grpc['authority'] = host;
+          stream['grpcSettings'] = grpc;
+        }
+
+        // ANTI-BOUCLE MTN
+        stream['sockopt'] = {"dialerProxy": "direct", "tcpFastOpen": true};
+        outbound['mux'] = {"enabled": false};
+        outbound['streamSettings'] = stream;
+        config['outbounds'][0] = outbound;
+      }
+
+      // DNS + ROUTING
+      config['dns'] = {"servers": ["8.8.8.8", "1.1.1.1", "localhost"]};
+      config['routing'] = {
+        "domainStrategy": "IPIfNonMatch",
+        "rules": [
+          {"type": "field", "outboundTag": "direct", "domain": [host, "full:$host"]},
+          {"type": "field", "outboundTag": "direct", "ip": ["8.8.8.8", "1.1.1.1"]},
+          {"type": "field", "outboundTag": "proxy", "ip": ["0.0.0.0/0"]},
+          {"type": "field", "outboundTag": "proxy", "domain": ["geosite:all"]}
+        ]
+      };
+
+      // Ajoute direct/block si manquant
+      bool hasDirect = config['outbounds'].any((o) => o['tag'] == 'direct');
+      if (!hasDirect) {
+        config['outbounds'].add({"tag": "direct", "protocol": "freedom"});
+        config['outbounds'].add({"tag": "block", "protocol": "blackhole"});
+      }
+
+      return jsonEncode(config);
+    } catch (e) {
+      logs.add("[PATCH ERREUR] $e");
+      return originalJson;
+    }
   }
 
   Future<void> connect() async {
@@ -82,18 +153,19 @@ class _MainScreenState extends State<MainScreen> {
     await prefs.setString('host', hostCtrl.text);
     await prefs.setString('server', serverCtrl.text);
 
-    String finalLink = fusionHost(hostCtrl.text, serverCtrl.text);
-    logs.add("[${DateTime.now().toString().substring(11,19)}] Fusion: ${hostCtrl.text} -> SNI injecté");
+    logs.add("[${DateTime.now().toString().substring(11,19)}] Original: ${serverCtrl.text.substring(0,25)}...");
+    logs.add("[${DateTime.now().toString().substring(11,19)}] Host à injecter: ${hostCtrl.text}");
 
     try {
-      var parser = FlutterV2ray.parseFromURL(finalLink);
-      String conf = parser.getFullConfiguration();
-      logs.add("[${DateTime.now().toString().substring(11,19)}] JSON généré OK");
+      var parser = FlutterV2ray.parseFromURL(serverCtrl.text.trim());
+      String originalConf = parser.getFullConfiguration();
+      String finalConf = patchConfigForInjection(originalConf, hostCtrl.text);
+      logs.add("[${DateTime.now().toString().substring(11,19)}] JSON patché OK");
 
       if (await v2ray.requestPermission()) {
         await v2ray.startV2Ray(
           remark: "BebeTunnel",
-          config: conf,
+          config: finalConf,
           proxyOnly: false,
           bypassSubnets: [],
         );
@@ -142,7 +214,7 @@ class _MainScreenState extends State<MainScreen> {
             const SizedBox(height: 6),
             Align(alignment: Alignment.centerLeft, child: Text(status, style: GoogleFonts.robotoMono(fontSize: 11, color: isConnected? const Color(0xFF10B981) : Colors.white38))),
             const SizedBox(height: 25),
-            _inputCard("1. VOTRE HOST", hostCtrl, "www.yahoo.com", Icons.language_rounded),
+            _inputCard("1. VOTRE HOST (injecté)", hostCtrl, "yamo.mtn.cm", Icons.language_rounded),
             const Spacer(),
             GestureDetector(
               onTap: isLoading? null : (isConnected? disconnect : connect),
@@ -163,7 +235,7 @@ class _MainScreenState extends State<MainScreen> {
               ),
             ),
             const Spacer(),
-            _inputCard("2. LIEN VLESS", serverCtrl, "vless://...", Icons.dns_rounded, maxLines: 3),
+            _inputCard("2. LIEN VLESS / VMESS", serverCtrl, "vless:// ou vmess://...", Icons.dns_rounded, maxLines: 4),
           ],
         ),
       ),
