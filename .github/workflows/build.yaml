@@ -26,12 +26,16 @@ jobs:
             echo "Android folder missing, creating..."
             flutter create . --org com.bebe.tunnel --project-name b_b_tunnel --platforms=android --no-overwrite
           fi
-          # Force minSdk 21 obligatoire pour flutter_v2ray
           sed -i 's/minSdkVersion.*/minSdkVersion 21/' android/app/build.gradle || true
           sed -i 's/minSdk .*/minSdk 21/' android/app/build.gradle || true
 
       - name: Pub Get
         run: flutter pub get
+
+      - name: Generate Launcher Icon 👶
+        run: |
+          dart pub add dev:flutter_launcher_icons --dev
+          flutter pub run flutter_launcher_icons
 
       - name: Build APK
         run: flutter build apk --release --no-tree-shake-icons
