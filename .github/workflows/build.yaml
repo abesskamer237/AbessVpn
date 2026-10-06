@@ -33,9 +33,7 @@ jobs:
         run: flutter pub get
 
       - name: Generate Launcher Icon 
-        run: |
-          dart pub add dev:flutter_launcher_icons --dev
-          flutter pub run flutter_launcher_icons
+        run: flutter pub run flutter_launcher_icons
 
       - name: Build APK
         run: flutter build apk --release --no-tree-shake-icons
