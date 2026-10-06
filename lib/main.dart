@@ -29,7 +29,7 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int index = 0;
   late FlutterV2ray v2ray;
-  final hostCtrl = TextEditingController(text: "www.yahoo.com");
+  final hostCtrl = TextEditingController(text: "yamo.mtn.cm");
   final serverCtrl = TextEditingController();
   String status = "DÉCONNECTÉ";
   bool isConnected = false;
@@ -57,25 +57,21 @@ class _MainScreenState extends State<MainScreen> {
     await v2ray.initializeV2Ray();
     final p = await SharedPreferences.getInstance();
     setState(() {
-      hostCtrl.text = p.getString('host')?? "www.yahoo.com";
+      hostCtrl.text = p.getString('host')?? "yamo.mtn.cm";
       serverCtrl.text = p.getString('server')?? "";
     });
     try {
       final ver = await v2ray.getCoreVersion();
-      logs.add("[CORE] Xray v$ver prêt");
+      setState(() => logs.add("[CORE] Xray v$ver prêt"));
     } catch(_){}
   }
 
-  // MOTEUR QUI FONCTIONNE - de ton main.dart_3.txt + fix MTN
   String? buildFinalConfig(String raw, String host) {
     try {
-      if (raw.trim().startsWith("{")) {
-        return raw.trim();
-      }
+      if (raw.trim().startsWith("{")) return raw.trim();
       if (!raw.startsWith("vless://") &&!raw.startsWith("vmess://") &&!raw.startsWith("trojan://") &&!raw.startsWith("ss://")) {
         return null;
       }
-
       final parser = FlutterV2ray.parseFromURL(raw.trim());
       final full = parser.getFullConfiguration();
       final Map<String, dynamic> json = jsonDecode(full);
@@ -85,7 +81,6 @@ class _MainScreenState extends State<MainScreen> {
         final stream = Map<String, dynamic>.from(outbound["streamSettings"]?? {});
         final network = stream["network"]?? "ws";
 
-        // WS HOST INJECTION - ton cas yamo.mtn.cm
         if (network == "ws") {
           stream["wsSettings"]??= {};
           stream["wsSettings"]["headers"]??= {};
@@ -95,7 +90,6 @@ class _MainScreenState extends State<MainScreen> {
           stream["httpSettings"]["host"] = [host.trim()];
         }
 
-        // SNI pour liens TLS 443 (ton 192.179.18.100:443)
         if (stream["security"] == "tls") {
           stream["tlsSettings"]??= {};
           stream["tlsSettings"]["serverName"] = host.trim();
@@ -103,12 +97,12 @@ class _MainScreenState extends State<MainScreen> {
         }
 
         outbound["streamSettings"] = stream;
-        outbound["mux"] = {"enabled": false}; // anti-bug MTN
+        outbound["mux"] = {"enabled": false};
         json["outbounds"][0] = outbound;
       }
       return jsonEncode(json);
     } catch (e) {
-      logs.add("[ERREUR MOTEUR] $e");
+      setState(() => logs.add("[ERREUR MOTEUR] $e"));
       return null;
     }
   }
@@ -124,30 +118,24 @@ class _MainScreenState extends State<MainScreen> {
     await prefs.setString('server', serverCtrl.text);
 
     logs.add("[${DateTime.now().toString().substring(11,19)}] Host: ${hostCtrl.text}");
-    logs.add("[${DateTime.now().toString().substring(11,19)}] Lien: ${serverCtrl.text.substring(0,25)}...");
-
     final finalConf = buildFinalConfig(serverCtrl.text.trim(), hostCtrl.text.trim());
 
     if (finalConf == null) {
       setState(() { isLoading = false; status = "LIEN INVALIDE"; });
-      logs.add("[ERREUR] Lien invalide");
       return;
     }
-
-    logs.add("[${DateTime.now().toString().substring(11,19)}] JSON patché OK - Moteur XV2ray");
 
     try {
       if (await v2ray.requestPermission()) {
         await v2ray.startV2Ray(
           remark: "BebeTunnel",
           config: finalConf,
-          blockedApps: [], // moteur qui marche utilise ça
+          blockedApps: [],
           bypassSubnets: [],
           proxyOnly: false,
         );
       } else {
         setState(() => isLoading = false);
-        logs.add("[PERMISSION] Refusée");
       }
     } catch (e) {
       setState(() { isLoading = false; status = "ECHEC"; });
@@ -155,9 +143,7 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
-  Future<void> disconnect() async {
-    await v2ray.stopV2Ray();
-  }
+  Future<void> disconnect() async => await v2ray.stopV2Ray();
 
   @override
   Widget build(BuildContext context) {
@@ -182,7 +168,11 @@ class _MainScreenState extends State<MainScreen> {
         child: Column(
           children: [
             Row(children: [
-              const Text("👶", style: TextStyle(fontSize: 28)),
+              // ICI TON LOGO
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.asset("assets/logo", width: 32, height: 32, fit: BoxFit.cover, errorBuilder: (c,e,s) => const Text("👶", style: TextStyle(fontSize: 28))),
+              ),
               const SizedBox(width: 10),
               Text("BEBE TUNNEL", style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.bold, fontSize: 22)),
               const Spacer(),
