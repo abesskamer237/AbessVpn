@@ -42,18 +42,20 @@ class _MainScreenState extends State<MainScreen> {
       onStatusChanged: (s) {
         if (!mounted) return;
         setState(() {
-          status = s.state.toString().split('.').last.toUpperCase();
-          isConnected = s.state == V2RayStatusState.connected;
-          isLoading = s.state == V2RayStatusState.connecting;
+          status = s.state;
+          isConnected = s.state == "CONNECTED";
+          isLoading = s.state == "CONNECTING";
         });
-        logs.add("[${DateTime.now().toString().substring(11,19)}] $status");
+        setState(() {
+          logs.add("[${DateTime.now().toString().substring(11,19)}] $status");
+        });
       },
     );
     _initV2Ray();
   }
 
   Future<void> _initV2Ray() async {
-    await v2ray.initializeV2Ray(); // <- CORRIGÉ ici aussi
+    await v2ray.initializeV2Ray();
     final p = await SharedPreferences.getInstance();
     setState(() {
       hostCtrl.text = p.getString('host')?? "www.yahoo.com";
@@ -84,12 +86,12 @@ class _MainScreenState extends State<MainScreen> {
     logs.add("[${DateTime.now().toString().substring(11,19)}] Fusion: ${hostCtrl.text} -> SNI injecté");
 
     try {
-      var parser = FlutterV2ray.parseFromURL(finalLink); // <- CORRIGÉ URL majuscule
+      var parser = FlutterV2ray.parseFromURL(finalLink);
       String conf = parser.getFullConfiguration();
       logs.add("[${DateTime.now().toString().substring(11,19)}] JSON généré OK");
 
       if (await v2ray.requestPermission()) {
-        await v2ray.startV2Ray( // <- CORRIGÉ R majuscule
+        await v2ray.startV2Ray(
           remark: "BebeTunnel",
           config: conf,
           proxyOnly: false,
@@ -105,7 +107,7 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> disconnect() async {
-    await v2ray.stopV2Ray(); // <- CORRIGÉ
+    await v2ray.stopV2Ray();
   }
 
   @override
