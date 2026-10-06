@@ -32,7 +32,7 @@ jobs:
       - name: Pub Get
         run: flutter pub get
 
-      - name: Generate Launcher Icon 👶
+      - name: Generate Launcher Icon 
         run: |
           dart pub add dev:flutter_launcher_icons --dev
           flutter pub run flutter_launcher_icons
