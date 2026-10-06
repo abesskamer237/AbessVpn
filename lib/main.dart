@@ -34,7 +34,7 @@ class _MainScreenState extends State<MainScreen> {
   String status = "DÉCONNECTÉ";
   bool isConnected = false;
   bool isLoading = false;
-  List<String> logs = ["[10:59] Bébé Tunnel démarré 👶", "[10:59] Prêt - supporte VLESS/VMESS"];
+  List<String> logs = ["[10:59] Bébé Tunnel démarré 👶", "[10:59] Moteur XV2ray OK"];
 
   @override
   void initState() {
@@ -60,86 +60,56 @@ class _MainScreenState extends State<MainScreen> {
       hostCtrl.text = p.getString('host')?? "www.yahoo.com";
       serverCtrl.text = p.getString('server')?? "";
     });
+    try {
+      final ver = await v2ray.getCoreVersion();
+      logs.add("[CORE] Xray v$ver prêt");
+    } catch(_){}
   }
 
-  // PATCH UNIVERSEL - MARCHE POUR TOUS LES LIENS
-  String patchConfigForInjection(String originalJson, String injectedHost) {
+  // MOTEUR QUI FONCTIONNE - de ton main.dart_3.txt + fix MTN
+  String? buildFinalConfig(String raw, String host) {
     try {
-      Map<String, dynamic> config = jsonDecode(originalJson);
-      final host = injectedHost.trim();
-      if (host.isEmpty) return originalJson;
-
-      if (config['outbounds']!= null && config['outbounds'].isNotEmpty) {
-        var outbound = config['outbounds'][0];
-        var stream = Map<String, dynamic>.from(outbound['streamSettings']?? {});
-
-        // 1. TLS SNI INJECTION
-        if (stream['security'] == 'tls' || stream['tlsSettings']!= null) {
-          var tls = Map<String, dynamic>.from(stream['tlsSettings']?? {});
-          tls['serverName'] = host;
-          tls['allowInsecure'] = true;
-          stream['tlsSettings'] = tls;
-          stream['security'] = 'tls';
-        }
-
-        // 2. WS HOST INJECTION
-        if (stream['network'] == 'ws' || stream['wsSettings']!= null) {
-          var ws = Map<String, dynamic>.from(stream['wsSettings']?? {});
-          ws['headers'] = ws['headers']?? {};
-          ws['headers']['Host'] = host;
-          stream['wsSettings'] = ws;
-        }
-
-        // 3. TCP HTTP HOST INJECTION
-        if (stream['network'] == 'tcp' || stream['tcpSettings']!= null) {
-          var tcp = Map<String, dynamic>.from(stream['tcpSettings']?? {});
-          tcp['header'] = tcp['header']?? {"type": "http"};
-          if (tcp['header']['type'] == 'http') {
-            tcp['header']['request'] = tcp['header']['request']?? {};
-            tcp['header']['request']['headers'] = tcp['header']['request']['headers']?? {};
-            tcp['header']['request']['headers']['Host'] = [host, "$host:443"];
-            tcp['header']['request']['headers']['User-Agent'] = ["Mozilla/5.0"];
-          }
-          stream['tcpSettings'] = tcp;
-        }
-
-        // 4. GRPC AUTHORITY
-        if (stream['network'] == 'grpc' || stream['grpcSettings']!= null) {
-          var grpc = Map<String, dynamic>.from(stream['grpcSettings']?? {});
-          grpc['authority'] = host;
-          stream['grpcSettings'] = grpc;
-        }
-
-        // ANTI-BOUCLE MTN
-        stream['sockopt'] = {"dialerProxy": "direct", "tcpFastOpen": true};
-        outbound['mux'] = {"enabled": false};
-        outbound['streamSettings'] = stream;
-        config['outbounds'][0] = outbound;
+      if (raw.trim().startsWith("{")) {
+        return raw.trim();
+      }
+      if (!raw.startsWith("vless://") &&!raw.startsWith("vmess://") &&!raw.startsWith("trojan://") &&!raw.startsWith("ss://")) {
+        return null;
       }
 
-      // DNS + ROUTING
-      config['dns'] = {"servers": ["8.8.8.8", "1.1.1.1", "localhost"]};
-      config['routing'] = {
-        "domainStrategy": "IPIfNonMatch",
-        "rules": [
-          {"type": "field", "outboundTag": "direct", "domain": [host, "full:$host"]},
-          {"type": "field", "outboundTag": "direct", "ip": ["8.8.8.8", "1.1.1.1"]},
-          {"type": "field", "outboundTag": "proxy", "ip": ["0.0.0.0/0"]},
-          {"type": "field", "outboundTag": "proxy", "domain": ["geosite:all"]}
-        ]
-      };
+      final parser = FlutterV2ray.parseFromURL(raw.trim());
+      final full = parser.getFullConfiguration();
+      final Map<String, dynamic> json = jsonDecode(full);
 
-      // Ajoute direct/block si manquant
-      bool hasDirect = config['outbounds'].any((o) => o['tag'] == 'direct');
-      if (!hasDirect) {
-        config['outbounds'].add({"tag": "direct", "protocol": "freedom"});
-        config['outbounds'].add({"tag": "block", "protocol": "blackhole"});
+      if (host.isNotEmpty && json["outbounds"]!= null && json["outbounds"].isNotEmpty) {
+        final outbound = json["outbounds"][0];
+        final stream = Map<String, dynamic>.from(outbound["streamSettings"]?? {});
+        final network = stream["network"]?? "ws";
+
+        // WS HOST INJECTION - ton cas yamo.mtn.cm
+        if (network == "ws") {
+          stream["wsSettings"]??= {};
+          stream["wsSettings"]["headers"]??= {};
+          stream["wsSettings"]["headers"]["Host"] = host.trim();
+        } else if (network == "http" || network == "h2") {
+          stream["httpSettings"]??= {};
+          stream["httpSettings"]["host"] = [host.trim()];
+        }
+
+        // SNI pour liens TLS 443 (ton 192.179.18.100:443)
+        if (stream["security"] == "tls") {
+          stream["tlsSettings"]??= {};
+          stream["tlsSettings"]["serverName"] = host.trim();
+          stream["tlsSettings"]["allowInsecure"] = true;
+        }
+
+        outbound["streamSettings"] = stream;
+        outbound["mux"] = {"enabled": false}; // anti-bug MTN
+        json["outbounds"][0] = outbound;
       }
-
-      return jsonEncode(config);
+      return jsonEncode(json);
     } catch (e) {
-      logs.add("[PATCH ERREUR] $e");
-      return originalJson;
+      logs.add("[ERREUR MOTEUR] $e");
+      return null;
     }
   }
 
@@ -153,28 +123,35 @@ class _MainScreenState extends State<MainScreen> {
     await prefs.setString('host', hostCtrl.text);
     await prefs.setString('server', serverCtrl.text);
 
-    logs.add("[${DateTime.now().toString().substring(11,19)}] Original: ${serverCtrl.text.substring(0,25)}...");
-    logs.add("[${DateTime.now().toString().substring(11,19)}] Host à injecter: ${hostCtrl.text}");
+    logs.add("[${DateTime.now().toString().substring(11,19)}] Host: ${hostCtrl.text}");
+    logs.add("[${DateTime.now().toString().substring(11,19)}] Lien: ${serverCtrl.text.substring(0,25)}...");
+
+    final finalConf = buildFinalConfig(serverCtrl.text.trim(), hostCtrl.text.trim());
+
+    if (finalConf == null) {
+      setState(() { isLoading = false; status = "LIEN INVALIDE"; });
+      logs.add("[ERREUR] Lien invalide");
+      return;
+    }
+
+    logs.add("[${DateTime.now().toString().substring(11,19)}] JSON patché OK - Moteur XV2ray");
 
     try {
-      var parser = FlutterV2ray.parseFromURL(serverCtrl.text.trim());
-      String originalConf = parser.getFullConfiguration();
-      String finalConf = patchConfigForInjection(originalConf, hostCtrl.text);
-      logs.add("[${DateTime.now().toString().substring(11,19)}] JSON patché OK");
-
       if (await v2ray.requestPermission()) {
         await v2ray.startV2Ray(
           remark: "BebeTunnel",
           config: finalConf,
-          proxyOnly: false,
+          blockedApps: [], // moteur qui marche utilise ça
           bypassSubnets: [],
+          proxyOnly: false,
         );
       } else {
         setState(() => isLoading = false);
+        logs.add("[PERMISSION] Refusée");
       }
     } catch (e) {
-      setState(() { isLoading = false; status = "LIEN INVALIDE"; });
-      logs.add("[ERREUR] $e");
+      setState(() { isLoading = false; status = "ECHEC"; });
+      logs.add("[ERREUR START] $e");
     }
   }
 
