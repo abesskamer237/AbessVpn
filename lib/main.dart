@@ -50,7 +50,7 @@ class _MainScreenState extends State<MainScreen> {
 
   final List<LogEntry> logs = [];
 
-  // UUID VLESS intégré - À remplacer par le vrai UUID
+  // UUID VLESS intégré
   static const String _vlessUuid = 'cc6e26f5-e8a0-4a3c-8e57-f60aa57e9e8e';
 
   static Map<String, dynamic> buildEmbeddedConfig(String host) {
@@ -511,7 +511,7 @@ class _MainScreenState extends State<MainScreen> {
                                 text: '[${log.timestamp.toString().substring(11, 19)}] ',
                                 style: GoogleFonts.robotoMono(
                                   fontSize: 9,
-                                  color: Colors.white20,
+                                  color: Colors.white12,
                                 ),
                               ),
                               TextSpan(
@@ -580,7 +580,7 @@ class _MainScreenState extends State<MainScreen> {
                 ),
               )
             else
-              Icon(
+              const Icon(
                 Icons.power_settings_new_rounded,
                 size: 62,
                 color: Colors.white,
@@ -649,13 +649,13 @@ class _MainScreenState extends State<MainScreen> {
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(6),
                 borderSide: BorderSide(
-                  color: Color(0xFF1AE2FF).withOpacity(0.25),
+                  color: const Color(0xFF1AE2FF).withOpacity(0.25),
                 ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(6),
                 borderSide: BorderSide(
-                  color: Color(0xFF1AE2FF).withOpacity(0.25),
+                  color: const Color(0xFF1AE2FF).withOpacity(0.25),
                 ),
               ),
               focusedBorder: OutlineInputBorder(
