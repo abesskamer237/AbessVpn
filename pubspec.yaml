@@ -1,5 +1,5 @@
-name: b_b_tunnel
-description: Bebe Tunnel VPN SNI VLESS
+name: abess_vpn
+description: AbessVPN - Secure VPN client with SNI host injection and VLESS/VMess support
 publish_to: 'none'
 version: 1.0.0+1
 
