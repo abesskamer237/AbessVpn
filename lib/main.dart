@@ -359,7 +359,7 @@ class _MainScreenState extends State<MainScreen> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         border: Border.all(color: const Color(0xFF1AE2FF), width: 1.4),
-        borderRadius: 10,
+        borderRadius: BorderRadius.circular(10),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF1AE2FF).withOpacity(0.20),
@@ -428,7 +428,7 @@ class _MainScreenState extends State<MainScreen> {
                         : Colors.white30,
                 width: 1.2,
               ),
-              borderRadius: 6,
+              borderRadius: BorderRadius.circular(6),
             ),
             child: Text(
               isConnected ? '● LIVE' : isLoading ? '◐ LOADING' : '○ OFF',
@@ -453,7 +453,7 @@ class _MainScreenState extends State<MainScreen> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         border: Border.all(color: const Color(0xFF1AE2FF), width: 1.2),
-        borderRadius: 8,
+        borderRadius: BorderRadius.circular(8),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF1AE2FF).withOpacity(0.22),
@@ -607,7 +607,7 @@ class _MainScreenState extends State<MainScreen> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         border: Border.all(color: const Color(0xFF1AE2FF), width: 1.2),
-        borderRadius: 8,
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
