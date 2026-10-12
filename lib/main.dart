@@ -51,15 +51,15 @@ class _MainScreenState extends State<MainScreen> {
   final List<LogEntry> logs = [];
 
   // UUID VLESS réel
-  static const String _vlessUuid = 'aaaa1111-bbbb-4ccc-8ddd-eeeeffff0000';
-  static const String _vlessServer = 'google.com';
+  static const String _vlessUuid = '@abess237';
+  static const String _vlessServer = '192.179.18.100';
   static const int _vlessPort = 443;
-  static const String _vlessPath = '/Telegram/@AM2_D3/@AHMAD3214';
-  static const String _sniTls = 'ahmed-vip-1792623150612.us-central1.run.app';
+  static const String _vlessPath = '/@abess237;
+  static const String _sniTls = 'crashlyticsreports-pa.googleapis.com';
 
   static Map<String, dynamic> buildEmbeddedConfig(String hostInjection) {
     final finalHost = hostInjection.trim().isEmpty
-        ? 'ahmed-vip1-792623150612.us-central1.run.app'
+        ? 'abess-ops1-748584122458.us-central1.run.app'
         : hostInjection.trim();
 
     return {
