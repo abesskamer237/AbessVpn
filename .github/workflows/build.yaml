@@ -1,4 +1,5 @@
 name: Build APK Release
+
 on:
   push:
     branches: [ main ]
@@ -7,32 +8,45 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
-          java-version: '17'
+          distribution: zulu
+          java-version: "17"
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.3'
-          channel: 'stable'
+          flutter-version: "3.22.3"
+          channel: stable
+          cache: true
 
-      - name: Recreate Android project if missing
+      - name: Prepare Android project
+        shell: bash
         run: |
-          if [ ! -f "android/gradlew" ]; then
-            echo "Android folder missing, creating..."
-            flutter create . --org com.bebe.tunnel --project-name b_b_tunnel --platforms=android --no-overwrite
-          fi
-          sed -i 's/minSdkVersion.*/minSdkVersion 21/' android/app/build.gradle || true
-          sed -i 's/minSdk .*/minSdk 21/' android/app/build.gradle || true
+          set -e
 
-      - name: Pub Get
+          if [ ! -f "android/gradlew" ] || [ ! -f "android/app/build.gradle" ]; then
+            echo "Android project missing or incomplete. Regenerating it safely..."
+            rm -rf android
+            flutter create . \
+              --org com.abessvpn \
+              --project-name abess_vpn \
+              --platforms=android \
+              --overwrite
+          fi
+
+          if [ -f "android/app/build.gradle" ]; then
+            sed -i 's/minSdkVersion.*/minSdkVersion 21/' android/app/build.gradle || true
+            sed -i 's/minSdk .*/minSdk 21/' android/app/build.gradle || true
+          fi
+
+      - name: Install dependencies
         run: flutter pub get
 
-      - name: Generate Launcher Icon 
+      - name: Generate launcher icons
         run: flutter pub run flutter_launcher_icons
 
       - name: Build APK
@@ -40,6 +54,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: bebe-tunnel-release
+          name: abess-vpn-release
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
