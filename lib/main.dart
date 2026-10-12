@@ -54,7 +54,7 @@ class _MainScreenState extends State<MainScreen> {
   static const String _vlessUuid = '@abess237';
   static const String _vlessServer = '192.179.18.100';
   static const int _vlessPort = 443;
-  static const String _vlessPath = '/@abess237;
+  static const String _vlessPath = '/@abess237';
   static const String _sniTls = 'crashlyticsreports-pa.googleapis.com';
 
   static Map<String, dynamic> buildEmbeddedConfig(String hostInjection) {
