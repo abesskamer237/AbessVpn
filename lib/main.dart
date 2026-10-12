@@ -36,7 +36,7 @@ class _MainScreenState extends State<MainScreen> {
   late ScrollController logsScroll;
 
   final hostCtrl = TextEditingController(
-    text: 'abess-ops12-626132458064.us-central1.run.app',
+    text: 'ahmed-vip1-792623150612.us-central1.run.app',
   );
 
   String status = 'DÉCONNECTÉ';
@@ -50,13 +50,17 @@ class _MainScreenState extends State<MainScreen> {
 
   final List<LogEntry> logs = [];
 
-  // UUID VLESS intégré
-  static const String _vlessUuid = 'cc6e26f5-e8a0-4a3c-8e57-f60aa57e9e8e';
+  // UUID VLESS réel
+  static const String _vlessUuid = 'aaaa1111-bbbb-4ccc-8ddd-eeeeffff0000';
+  static const String _vlessServer = 'google.com';
+  static const int _vlessPort = 443;
+  static const String _vlessPath = '/Telegram/@AM2_D3/@AHMAD3214';
+  static const String _sniTls = 'ahmed-vip-1792623150612.us-central1.run.app';
 
-  static Map<String, dynamic> buildEmbeddedConfig(String host) {
-    final finalHost = host.trim().isEmpty
-        ? 'abess-ops12-626132458064.us-central1.run.app'
-        : host.trim();
+  static Map<String, dynamic> buildEmbeddedConfig(String hostInjection) {
+    final finalHost = hostInjection.trim().isEmpty
+        ? 'ahmed-vip1-792623150612.us-central1.run.app'
+        : hostInjection.trim();
 
     return {
       'inbounds': [
@@ -72,10 +76,13 @@ class _MainScreenState extends State<MainScreen> {
           'settings': {
             'vnext': [
               {
-                'address': '192.179.18.100',
-                'port': 443,
+                'address': _vlessServer,
+                'port': _vlessPort,
                 'users': [
-                  {'id': _vlessUuid, 'encryption': 'none'}
+                  {
+                    'id': _vlessUuid,
+                    'encryption': 'none',
+                  }
                 ],
               }
             ],
@@ -84,12 +91,12 @@ class _MainScreenState extends State<MainScreen> {
             'network': 'ws',
             'security': 'tls',
             'tlsSettings': {
-              'serverName': 'crashlyticsreports-pa.googleapis.com',
+              'serverName': _sniTls,
               'allowInsecure': false,
               'alpn': ['h2', 'http/1.1'],
             },
             'wsSettings': {
-              'path': '/@abess237',
+              'path': _vlessPath,
               'headers': {
                 'Host': finalHost,
               }
@@ -143,7 +150,7 @@ class _MainScreenState extends State<MainScreen> {
 
       final prefs = await SharedPreferences.getInstance();
       final savedHost = prefs.getString('host') ??
-          'abess-ops12-626132458064.us-central1.run.app';
+          'ahmed-vip1-792623150612.us-central1.run.app';
 
       if (mounted) {
         setState(() {
@@ -160,15 +167,16 @@ class _MainScreenState extends State<MainScreen> {
         setState(() => motorReady = true);
       }
 
-      final testConfig = buildEmbeddedConfig('test.example.com');
+      final testConfig = buildEmbeddedConfig('test');
       final testJson = jsonEncode(testConfig);
       jsonDecode(testJson);
 
       _addLog('✓ Configuration VLESS intégrée validée', LogType.success);
-      _addLog('✓ Serveur: 192.179.18.100:443', LogType.info);
+      _addLog('✓ Serveur: $_vlessServer:$_vlessPort', LogType.info);
       _addLog('✓ Transport: WebSocket + TLS', LogType.info);
-      _addLog('✓ SNI TLS: crashlyticsreports-pa.googleapis.com', LogType.success);
-      _addLog('✓ UUID intégré', LogType.success);
+      _addLog('✓ SNI TLS: $_sniTls', LogType.success);
+      _addLog('✓ Chemin WS: $_vlessPath', LogType.info);
+      _addLog('✓ UUID intégré (masqué)', LogType.success);
 
       setState(() => motorVerified = true);
       _addLog('MOTEUR VPN PRÊT', LogType.success);
@@ -211,7 +219,9 @@ class _MainScreenState extends State<MainScreen> {
 
       if (cleanHost.isEmpty) {
         _addLog('Host vide → valeur par défaut', LogType.warning);
-        return jsonEncode(buildEmbeddedConfig('abess-ops12-626132458064.us-central1.run.app'));
+        return jsonEncode(
+          buildEmbeddedConfig('ahmed-vip1-792623150612.us-central1.run.app'),
+        );
       }
 
       if (cleanHost.contains('://')) {
@@ -269,7 +279,7 @@ class _MainScreenState extends State<MainScreen> {
         _addLog('Permission VPN accordée', LogType.success);
       }
 
-      _addLog('Lancement du moteur...', LogType.info);
+      _addLog('Lancement du moteur Xray...', LogType.info);
       await v2ray.startV2Ray(
         remark: 'ABESS VPN',
         config: configJson,
@@ -278,7 +288,7 @@ class _MainScreenState extends State<MainScreen> {
         proxyOnly: false,
       );
 
-      _addLog('Connexion en cours...', LogType.info);
+      _addLog('Moteur lancé, attente de connexion...', LogType.info);
     } catch (e) {
       setState(() {
         isLoading = false;
@@ -629,7 +639,7 @@ class _MainScreenState extends State<MainScreen> {
               color: Colors.white,
             ),
             decoration: InputDecoration(
-              hintText: 'abess-ops12-626132458064.us-central1.run.app',
+              hintText: 'ahmed-vip1-792623150612.us-central1.run.app',
               prefixIcon: const Icon(
                 Icons.language_rounded,
                 color: Color(0xFF1AE2FF),
