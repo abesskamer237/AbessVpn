@@ -48,6 +48,12 @@ class _MainScreenState extends State<MainScreen> {
   int? _lastTxBytes;
   int _lastSampleTs = 0;
 
+  // Traffic detection
+  static const double _trafficThresholdKbps = 5.0; // threshold to consider "real" traffic
+  bool _trafficActive = false; // true when recent samples exceed threshold
+  int? _lastTrafficDetectedAt;
+  bool _connectedWithTraffic = false;
+
   final hostCtrl = TextEditingController(
     text: 'ahmed-vip1-792623150612.us-central1.run.app',
   );
@@ -111,6 +117,14 @@ class _MainScreenState extends State<MainScreen> {
     };
   }
 
+  bool isValidHost(String host) {
+    final clean = host.trim();
+    if (clean.isEmpty) return false;
+    if (clean.contains('://')) return false;
+    final hostPattern = RegExp(r'^(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}\$|^(?:\d{1,3}\.){3}\d{1,3}\$');
+    return hostPattern.hasMatch(clean);
+  }
+
   String _sanitizeLog(String message) {
     final maskedHost = '[MASKED_HOST]';
     final maskedIp = '[MASKED_IP]';
@@ -166,13 +180,41 @@ class _MainScreenState extends State<MainScreen> {
       _lastTxBytes = txBytes.toInt();
       _lastSampleTs = now;
 
+      // mark traffic active if threshold exceeded
+      if (rxRate >= _trafficThresholdKbps || txRate >= _trafficThresholdKbps) {
+        _trafficActive = true;
+        _lastTrafficDetectedAt = DateTime.now().millisecondsSinceEpoch;
+      }
+
       _addSample(rxRate.clamp(0.0, 1000.0), txRate.clamp(0.0, 1000.0));
     } catch (_) {
+      // fallback to simulated wave when native method unavailable
       final time = DateTime.now().millisecondsSinceEpoch;
       final wave = 28 + (math.sin(time / 1400) * 18);
       final burst = 14 + (math.cos(time / 900) * 11);
       _addSample(wave.clamp(0.0, 200.0), burst.clamp(0.0, 200.0));
     }
+  }
+
+  Future<bool> _waitForTraffic({int timeoutSeconds = 8}) async {
+    final endTs = DateTime.now().millisecondsSinceEpoch + timeoutSeconds * 1000;
+    while (DateTime.now().millisecondsSinceEpoch < endTs) {
+      // Check last samples first
+      if (_rxSamples.isNotEmpty && _txSamples.isNotEmpty) {
+        final lastRx = _rxSamples.last;
+        final lastTx = _txSamples.last;
+        if (lastRx >= _trafficThresholdKbps || lastTx >= _trafficThresholdKbps) return true;
+      }
+
+      // fallback: check lastTrafficDetectedAt
+      if (_lastTrafficDetectedAt != null) {
+        final age = DateTime.now().millisecondsSinceEpoch - _lastTrafficDetectedAt!;
+        if (age <= timeoutSeconds * 1000) return true;
+      }
+
+      await Future.delayed(const Duration(milliseconds: 700));
+    }
+    return false;
   }
 
   void _addSample(double rx, double tx) {
@@ -332,6 +374,15 @@ class _MainScreenState extends State<MainScreen> {
   Future<void> connect() async {
     if (isLoading || isConnected || !motorReady) return;
 
+    // validate host before attempting
+    if (!isValidHost(hostCtrl.text)) {
+      setState(() {
+        status = 'HOST INVALIDE';
+      });
+      _addLog('Host invalide, connexion annulée', LogType.error);
+      return;
+    }
+
     _addLog('Tentative de connexion...', LogType.info);
     setState(() => isLoading = true);
 
@@ -374,7 +425,29 @@ class _MainScreenState extends State<MainScreen> {
         proxyOnly: false,
       );
 
-      _addLog('Moteur lancé, attente de connexion...', LogType.info);
+      _addLog('Moteur lancé, attente de trafic réel...', LogType.info);
+
+      // Wait for actual traffic; if none, stop the engine and mark as failed
+      final trafficOk = await _waitForTraffic(timeoutSeconds: 10);
+
+      if (trafficOk) {
+        _connectedWithTraffic = true;
+        setState(() {
+          isLoading = false;
+          status = 'CONNECTÉ';
+        });
+        _addLog('✓ Trafic détecté — connexion effective', LogType.success);
+      } else {
+        _addLog('⚠ Aucun trafic détecté — annulation de la connexion', LogType.error);
+        try {
+          await v2ray.stopV2Ray();
+        } catch (_) {}
+        setState(() {
+          isLoading = false;
+          status = 'ERREUR TRAFIC';
+          isConnected = false;
+        });
+      }
     } catch (e) {
       setState(() {
         isLoading = false;
@@ -394,6 +467,7 @@ class _MainScreenState extends State<MainScreen> {
         motorStatus = 'MOTEUR: INACTIF';
         isConnected = false;
         isLoading = false;
+        _connectedWithTraffic = false;
       });
     } catch (e) {
       _addLog('Erreur de déconnexion: $e', LogType.error);
@@ -418,6 +492,7 @@ class _MainScreenState extends State<MainScreen> {
     final screenSize = MediaQuery.of(context).size;
     final isCompact = screenSize.width < 380 || screenSize.height < 700;
     final horizontalPadding = isCompact ? 12.0 : 14.0;
+    final hostValid = isValidHost(hostCtrl.text);
 
     return Scaffold(
       body: DecoratedBox(
@@ -452,10 +527,10 @@ class _MainScreenState extends State<MainScreen> {
                     _buildLogPanel(compact: isCompact),
                     const SizedBox(height: 16),
                     Center(
-                      child: _buildPowerButton(compact: isCompact),
+                      child: _buildPowerButton(compact: isCompact, hostValid: hostValid),
                     ),
                     const SizedBox(height: 16),
-                    _buildHostInput(compact: isCompact),
+                    _buildHostInput(compact: isCompact, hostValid: hostValid),
                     const SizedBox(height: 12),
                   ],
                 ),
@@ -569,6 +644,9 @@ class _MainScreenState extends State<MainScreen> {
         ? _txSamples.asMap().entries.map((entry) => FlSpot(entry.key.toDouble(), entry.value)).toList()
         : [const FlSpot(0, 0)];
 
+    final latestRx = _rxSamples.isNotEmpty ? _rxSamples.last : 0.0;
+    final latestTx = _txSamples.isNotEmpty ? _txSamples.last : 0.0;
+
     return Container(
       padding: EdgeInsets.all(compact ? 10 : 12),
       decoration: BoxDecoration(
@@ -604,387 +682,11 @@ class _MainScreenState extends State<MainScreen> {
             ],
           ),
           const SizedBox(height: 8),
-          SizedBox(
-            height: compact ? 160 : 180,
-            child: LineChart(
-              LineChartData(
-                minY: 0,
-                maxY: 200,
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  horizontalInterval: 50,
-                  getDrawingHorizontalLine: (_) => FlLine(
-                    color: Colors.white.withOpacity(0.08),
-                    strokeWidth: 1,
-                  ),
-                ),
-                borderData: FlBorderData(show: false),
-                titlesData: FlTitlesData(
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 28,
-                      interval: 50,
-                      getTitlesWidget: (value, meta) => Text(
-                        '${value.toInt()}k',
-                        style: GoogleFonts.robotoMono(
-                          color: Colors.white38,
-                          fontSize: 9,
-                        ),
-                      ),
-                    ),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 18,
-                      interval: 8,
-                      getTitlesWidget: (value, meta) => Text(
-                        value.toInt() >= 0 ? '${value.toInt()}' : '',
-                        style: GoogleFonts.robotoMono(
-                          color: Colors.white30,
-                          fontSize: 8,
-                        ),
-                      ),
-                    ),
-                  ),
-                  rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                ),
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: rxData,
-                    isCurved: true,
-                    gradient: LinearGradient(
-                      colors: [const Color(0xFFEF4444), const Color(0xFFFF8A80)],
-                    ),
-                    barWidth: 2.8,
-                    isStrokeCapRound: true,
-                    dotData: FlDotData(show: false),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xFFEF4444).withOpacity(0.18),
-                          const Color(0xFFEF4444).withOpacity(0.02),
-                        ],
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                      ),
-                    ),
-                  ),
-                  LineChartBarData(
-                    spots: txData,
-                    isCurved: true,
-                    gradient: LinearGradient(
-                      colors: [const Color(0xFF38BDF8), const Color(0xFF7DD3FC)],
-                    ),
-                    barWidth: 2.8,
-                    isStrokeCapRound: true,
-                    dotData: FlDotData(show: false),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xFF38BDF8).withOpacity(0.18),
-                          const Color(0xFF38BDF8).withOpacity(0.02),
-                        ],
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _legendDot(Color color) => Container(
-        width: 9,
-        height: 9,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(50),
-        ),
-      );
-
-  Widget _buildLogPanel({required bool compact}) {
-    return Container(
-      padding: EdgeInsets.all(compact ? 10 : 12),
-      decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFF1AE2FF), width: 1.1),
-        borderRadius: BorderRadius.circular(8),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF1AE2FF).withOpacity(0.22),
-            blurRadius: 18,
-            spreadRadius: 1,
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'TERMINAL LOGS',
-                style: GoogleFonts.spaceGrotesk(
-                  fontSize: compact ? 11 : 12,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF1AE2FF),
-                ),
-              ),
-              IconButton(
-                onPressed: clearLogs,
-                icon: const Icon(Icons.delete_outline_rounded),
-                color: const Color(0xFF1AE2FF),
-                iconSize: compact ? 18 : 20,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Container(
-            height: compact ? 220 : 260,
-            color: const Color(0xFF021117),
-            child: logs.isEmpty
-                ? Center(
-                    child: Text(
-                      'Aucun log pour le moment',
-                      style: GoogleFonts.robotoMono(
-                        fontSize: compact ? 11 : 12,
-                        color: Colors.white24,
-                      ),
-                    ),
-                  )
-                : ListView.builder(
-                    controller: logsScroll,
-                    itemCount: logs.length,
-                    itemBuilder: (context, index) {
-                      final log = logs[index];
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 5),
-                        child: RichText(
-                          text: TextSpan(
-                            children: [
-                              TextSpan(
-                                text: '[${log.timestamp.toString().substring(11, 19)}] ',
-                                style: GoogleFonts.robotoMono(
-                                  fontSize: compact ? 8 : 9,
-                                  color: Colors.white12,
-                                ),
-                              ),
-                              TextSpan(
-                                text: log.message,
-                                style: GoogleFonts.robotoMono(
-                                  fontSize: compact ? 9 : 10,
-                                  color: log.type.color,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPowerButton({required bool compact}) {
-    final buttonSize = compact ? 180.0 : (MediaQuery.of(context).size.width < 420 ? 200.0 : 220.0);
-
-    return GestureDetector(
-      onTap: !motorReady || !motorVerified
-          ? null
-          : (isLoading ? null : (isConnected ? disconnect : connect)),
-      child: Container(
-        width: buttonSize,
-        height: buttonSize,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: isConnected
-                ? [const Color(0xFF2DEB8A), const Color(0xFF0D7C4E)]
-                : isLoading
-                    ? [const Color(0xFF1AE2FF), const Color(0xFF0A5CD2)]
-                    : [const Color(0xFF1D4ED8), const Color(0xFF0A0F2A)],
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: isConnected
-                  ? const Color(0xFF2DEB8A).withOpacity(0.45)
-                  : const Color(0xFF1AE2FF).withOpacity(0.35),
-              blurRadius: 28,
-              spreadRadius: 4,
-            ),
-          ],
-          border: Border.all(
-            color: const Color(0xFF1AE2FF),
-            width: 2.2,
-          ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (isLoading)
-              SizedBox(
-                width: compact ? 46 : 54,
-                height: compact ? 46 : 54,
-                child: const CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  strokeWidth: 3.3,
-                ),
-              )
-            else
-              Icon(
-                Icons.power_settings_new_rounded,
-                size: compact ? 52 : 62,
-                color: Colors.white,
-              ),
-            const SizedBox(height: 10),
-            Text(
-              isLoading
-                  ? 'CONNEXION...'
-                  : (isConnected ? 'ARRÊTER' : 'CONNECTER'),
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: compact ? 15 : 18,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHostInput({required bool compact}) {
-    return Container(
-      padding: EdgeInsets.all(compact ? 12 : 14),
-      decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFF1AE2FF), width: 1.1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'HOST (INJECTÉ)',
-            style: GoogleFonts.spaceGrotesk(
-              fontSize: compact ? 10 : 11,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF1AE2FF),
-            ),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: hostCtrl,
-            enabled: !isLoading && !isConnected && motorVerified,
-            style: GoogleFonts.robotoMono(
-              fontSize: compact ? 12 : 13,
-              color: Colors.white,
-            ),
-            decoration: InputDecoration(
-              hintText: 'ahmed-vip1-792623150612.us-central1.run.app',
-              hintStyle: GoogleFonts.robotoMono(
-                fontSize: compact ? 11 : 12,
-                color: Colors.white24,
-              ),
-              prefixIcon: const Icon(
-                Icons.language_rounded,
-                color: Color(0xFF1AE2FF),
-                size: 18,
-              ),
-              contentPadding: EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: compact ? 12 : 14,
-              ),
-              suffixIcon: hostCtrl.text.isNotEmpty
-                  ? IconButton(
-                      onPressed: () {
-                        hostCtrl.clear();
-                        setState(() {});
-                      },
-                      icon: const Icon(Icons.clear_rounded),
-                    )
-                  : null,
-              filled: true,
-              fillColor: const Color(0xFF051421),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
-                borderSide: BorderSide(
-                  color: const Color(0xFF1AE2FF).withOpacity(0.25),
-                ),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
-                borderSide: BorderSide(
-                  color: const Color(0xFF1AE2FF).withOpacity(0.25),
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
-                borderSide: const BorderSide(
-                  color: Color(0xFF1AE2FF),
-                  width: 2,
-                ),
-              ),
-            ),
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Seul paramètre configurable — config VLESS intégrée',
-            style: GoogleFonts.robotoMono(
-              fontSize: compact ? 8 : 9,
-              color: Colors.white24,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-enum LogType { info, success, warning, error }
-
-extension LogTypeExt on LogType {
-  Color get color {
-    switch (this) {
-      case LogType.info:
-        return const Color(0xFF1AE2FF);
-      case LogType.success:
-        return const Color(0xFF2DEB8A);
-      case LogType.warning:
-        return const Color(0xFFF7B955);
-      case LogType.error:
-        return const Color(0xFFEF4444);
-    }
-  }
-}
-
-class LogEntry {
-  final String message;
-  final LogType type;
-  final DateTime timestamp;
-
-  LogEntry({
-    required this.message,
-    required this.type,
-    required this.timestamp,
-  });
-}
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('
+{
