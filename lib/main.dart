@@ -328,6 +328,10 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
+    final isCompact = screenSize.width < 380 || screenSize.height < 700;
+    final horizontalPadding = isCompact ? 12.0 : 14.0;
+
     return Scaffold(
       body: DecoratedBox(
         decoration: BoxDecoration(
@@ -342,21 +346,31 @@ class _MainScreenState extends State<MainScreen> {
           ),
         ),
         child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 12),
-                _buildHeader(),
-                const SizedBox(height: 18),
-                _buildLogPanel(),
-                const SizedBox(height: 18),
-                Center(child: _buildPowerButton()),
-                const SizedBox(height: 18),
-                _buildHostInput(),
-                const SizedBox(height: 20),
-              ],
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: SingleChildScrollView(
+                padding: EdgeInsets.symmetric(
+                  horizontal: horizontalPadding,
+                  vertical: 12,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 8),
+                    _buildHeader(compact: isCompact),
+                    const SizedBox(height: 16),
+                    _buildLogPanel(compact: isCompact),
+                    const SizedBox(height: 16),
+                    Center(
+                      child: _buildPowerButton(compact: isCompact),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildHostInput(compact: isCompact),
+                    const SizedBox(height: 12),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -364,11 +378,11 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader({required bool compact}) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(compact ? 10 : 12),
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFF1AE2FF), width: 1.4),
+        border: Border.all(color: const Color(0xFF1AE2FF), width: 1.2),
         borderRadius: BorderRadius.circular(10),
         boxShadow: [
           BoxShadow(
@@ -381,8 +395,8 @@ class _MainScreenState extends State<MainScreen> {
       child: Row(
         children: [
           Container(
-            width: 46,
-            height: 46,
+            width: compact ? 40 : 46,
+            height: compact ? 40 : 46,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               gradient: const LinearGradient(
@@ -400,7 +414,7 @@ class _MainScreenState extends State<MainScreen> {
               ),
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -408,16 +422,16 @@ class _MainScreenState extends State<MainScreen> {
                 Text(
                   'ABESS VPN',
                   style: GoogleFonts.spaceGrotesk(
-                    fontSize: 28,
+                    fontSize: compact ? 22 : 28,
                     fontWeight: FontWeight.w900,
-                    letterSpacing: 1.1,
+                    letterSpacing: 1.0,
                     color: Colors.white,
                   ),
                 ),
                 Text(
                   motorVerified ? '✓ MOTEUR VÉRIFIÉ' : '⚠ VÉRIFICATION...',
                   style: GoogleFonts.robotoMono(
-                    fontSize: 9,
+                    fontSize: compact ? 8 : 9,
                     color: motorVerified
                         ? const Color(0xFF2DEB8A)
                         : const Color(0xFFF7B955),
@@ -428,7 +442,7 @@ class _MainScreenState extends State<MainScreen> {
             ),
           ),
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: EdgeInsets.all(compact ? 6 : 8),
             decoration: BoxDecoration(
               border: Border.all(
                 color: isConnected
@@ -443,7 +457,7 @@ class _MainScreenState extends State<MainScreen> {
             child: Text(
               isConnected ? '● LIVE' : isLoading ? '◐ LOADING' : '○ OFF',
               style: GoogleFonts.robotoMono(
-                fontSize: 10,
+                fontSize: compact ? 9 : 10,
                 color: isConnected
                     ? const Color(0xFF2DEB8A)
                     : isLoading
@@ -458,11 +472,11 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  Widget _buildLogPanel() {
+  Widget _buildLogPanel({required bool compact}) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(compact ? 10 : 12),
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFF1AE2FF), width: 1.2),
+        border: Border.all(color: const Color(0xFF1AE2FF), width: 1.1),
         borderRadius: BorderRadius.circular(8),
         boxShadow: [
           BoxShadow(
@@ -481,7 +495,7 @@ class _MainScreenState extends State<MainScreen> {
               Text(
                 'TERMINAL LOGS',
                 style: GoogleFonts.spaceGrotesk(
-                  fontSize: 12,
+                  fontSize: compact ? 11 : 12,
                   fontWeight: FontWeight.w700,
                   color: const Color(0xFF1AE2FF),
                 ),
@@ -490,19 +504,22 @@ class _MainScreenState extends State<MainScreen> {
                 onPressed: clearLogs,
                 icon: const Icon(Icons.delete_outline_rounded),
                 color: const Color(0xFF1AE2FF),
+                iconSize: compact ? 18 : 20,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
               ),
             ],
           ),
           const SizedBox(height: 8),
           Container(
-            height: 260,
+            height: compact ? 220 : 260,
             color: const Color(0xFF021117),
             child: logs.isEmpty
                 ? Center(
                     child: Text(
                       'Aucun log pour le moment',
                       style: GoogleFonts.robotoMono(
-                        fontSize: 12,
+                        fontSize: compact ? 11 : 12,
                         color: Colors.white24,
                       ),
                     ),
@@ -520,14 +537,14 @@ class _MainScreenState extends State<MainScreen> {
                               TextSpan(
                                 text: '[${log.timestamp.toString().substring(11, 19)}] ',
                                 style: GoogleFonts.robotoMono(
-                                  fontSize: 9,
+                                  fontSize: compact ? 8 : 9,
                                   color: Colors.white12,
                                 ),
                               ),
                               TextSpan(
                                 text: log.message,
                                 style: GoogleFonts.robotoMono(
-                                  fontSize: 10,
+                                  fontSize: compact ? 9 : 10,
                                   color: log.type.color,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -544,14 +561,16 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  Widget _buildPowerButton() {
+  Widget _buildPowerButton({required bool compact}) {
+    final buttonSize = compact ? 180.0 : (MediaQuery.of(context).size.width < 420 ? 200.0 : 220.0);
+
     return GestureDetector(
       onTap: !motorReady || !motorVerified
           ? null
           : (isLoading ? null : (isConnected ? disconnect : connect)),
       child: Container(
-        width: 220,
-        height: 220,
+        width: buttonSize,
+        height: buttonSize,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           gradient: LinearGradient(
@@ -581,27 +600,27 @@ class _MainScreenState extends State<MainScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             if (isLoading)
-              const SizedBox(
-                width: 54,
-                height: 54,
-                child: CircularProgressIndicator(
+              SizedBox(
+                width: compact ? 46 : 54,
+                height: compact ? 46 : 54,
+                child: const CircularProgressIndicator(
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                   strokeWidth: 3.3,
                 ),
               )
             else
-              const Icon(
+              Icon(
                 Icons.power_settings_new_rounded,
-                size: 62,
+                size: compact ? 52 : 62,
                 color: Colors.white,
               ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Text(
               isLoading
                   ? 'CONNEXION...'
                   : (isConnected ? 'ARRÊTER' : 'CONNECTER'),
               style: GoogleFonts.spaceGrotesk(
-                fontSize: 18,
+                fontSize: compact ? 15 : 18,
                 fontWeight: FontWeight.w900,
                 color: Colors.white,
               ),
@@ -612,11 +631,11 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  Widget _buildHostInput() {
+  Widget _buildHostInput({required bool compact}) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: EdgeInsets.all(compact ? 12 : 14),
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFF1AE2FF), width: 1.2),
+        border: Border.all(color: const Color(0xFF1AE2FF), width: 1.1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -625,25 +644,33 @@ class _MainScreenState extends State<MainScreen> {
           Text(
             'HOST (INJECTÉ)',
             style: GoogleFonts.spaceGrotesk(
-              fontSize: 11,
+              fontSize: compact ? 10 : 11,
               fontWeight: FontWeight.w700,
               color: const Color(0xFF1AE2FF),
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           TextField(
             controller: hostCtrl,
             enabled: !isLoading && !isConnected && motorVerified,
             style: GoogleFonts.robotoMono(
-              fontSize: 13,
+              fontSize: compact ? 12 : 13,
               color: Colors.white,
             ),
             decoration: InputDecoration(
               hintText: 'ahmed-vip1-792623150612.us-central1.run.app',
+              hintStyle: GoogleFonts.robotoMono(
+                fontSize: compact ? 11 : 12,
+                color: Colors.white24,
+              ),
               prefixIcon: const Icon(
                 Icons.language_rounded,
                 color: Color(0xFF1AE2FF),
                 size: 18,
+              ),
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: compact ? 12 : 14,
               ),
               suffixIcon: hostCtrl.text.isNotEmpty
                   ? IconButton(
@@ -682,7 +709,7 @@ class _MainScreenState extends State<MainScreen> {
           Text(
             'Seul paramètre configurable — config VLESS intégrée',
             style: GoogleFonts.robotoMono(
-              fontSize: 9,
+              fontSize: compact ? 8 : 9,
               color: Colors.white24,
             ),
           ),
